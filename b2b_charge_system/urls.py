@@ -15,12 +15,11 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from django.urls import path
-from charge_management.views import CreditRequestAPIView
+from django.urls import path, include
 
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('api/credit-request/', CreditRequestAPIView.as_view(), name='credit-request-api'),
-
+    path('api/', include('charge_management.urls')),
+    path('o/', include('oauth2_provider.urls', namespace='oauth2_provider')),  # OAuth2 endpoints
 ]
