@@ -17,16 +17,17 @@ Including another URLconf
 from django.urls import path
 from charge_management.views import (
     SellerListCreateView, SellerDetailView, CreditRequestCreateView,
-    CreditRequestApprovalView, TransactionCreateView, CreditLogListView,
-    credit_balance_view
+    CreditRequestApprovalView, TransactionCreateView, CreditLogsListView,
+    CreditBalanceView, CreditLogListView
 )
 
 urlpatterns = [
-    path('credit_balance/', credit_balance_view, name='credit_balance_view'),
+    path('credit_balance/', CreditBalanceView.as_view(), name='credit_balance_view'),
     path('sellers/', SellerListCreateView.as_view(), name='seller-list-create'),
     path('sellers/<int:pk>/', SellerDetailView.as_view(), name='seller-detail'),
     path('credit-requests/', CreditRequestCreateView.as_view(), name='credit-request-create'),
     path('credit-requests/<int:pk>/approve/', CreditRequestApprovalView.as_view(), name='credit-request-approve'),
     path('transactions/', TransactionCreateView.as_view(), name='transaction-create'),
-    path('sellers/<int:seller_id>/logs/', CreditLogListView.as_view(), name='credit-log-list'),
+    path('sellers/<int:seller_id>/logs/', CreditLogsListView.as_view(), name='credit-log-list'),
+    path('seller/logs/', CreditLogListView.as_view(), name='credit-log-list'),
 ]

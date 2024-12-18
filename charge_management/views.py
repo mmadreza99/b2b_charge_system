@@ -1,30 +1,44 @@
 from django.db import transaction
+from django.http import Http404
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
+
 from rest_framework import generics, status
-from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from django.utils import timezone
+from rest_framework.permissions import IsAdminUser, IsAuthenticated
+from rest_framework_simplejwt.authentication import JWTAuthentication
+
+from .handlers import CreditTransactionHandler
 from .models import Seller, CreditRequest, Transaction, CreditLog
 from .serializers import SellerSerializer, CreditRequestSerializer, TransactionSerializer, CreditLogSerializer
 
-from rest_framework.decorators import api_view, authentication_classes, permission_classes
-from oauth2_provider.contrib.rest_framework import OAuth2Authentication
-from rest_framework.permissions import IsAuthenticated
 
-
-@api_view(['GET'])
-@authentication_classes([OAuth2Authentication])  # Enforce OAuth2 authentication
-@permission_classes([IsAuthenticated])  # Ensure user is authenticated
-def credit_balance_view(request):
+class CreditBalanceView(APIView):
     """
     Return the current credit balance of the authenticated user.
     """
-    user = request.user
-    seller = Seller.objects.get(user=user)  # Assuming Seller is tied to User
-    return Response({
-        "seller_name": seller.name,
-        "current_balance": seller.credit
-    })
+    authentication_classes = [JWTAuthentication]  # Enforce OAuth2 authentication
+    permission_classes = [IsAuthenticated]  # Ensure user is authenticated
+
+    def get(self, request):
+        try:
+            user = request.user
+            seller = Seller.objects.get(user=user)  # Assuming Seller is tied to User
+        except Seller.DoesNotExist:
+            return Response(
+                {"error": "The Seller associated with this user was not found."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {"error": f"An unexpected error occurred: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        return Response({
+            "seller_name": seller.name,
+            "current_balance": seller.credit
+        })
 
 
 # View to list and create Sellers
@@ -32,8 +46,8 @@ class SellerListCreateView(generics.ListCreateAPIView):
     queryset = Seller.objects.all()
     serializer_class = SellerSerializer
 
-    authentication_classes = [OAuth2Authentication]  # Enforce OAuth2 authentication
-    permission_classes = [IsAuthenticated]  # Ensure user is authenticated
+    authentication_classes = [JWTAuthentication]  # Enforce OAuth2 authentication
+    permission_classes = [IsAdminUser]  # Ensure user is IsAdminUser
 
 
 # View to retrieve, update, or delete a Seller
@@ -41,8 +55,8 @@ class SellerDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Seller.objects.all()
     serializer_class = SellerSerializer
 
-    authentication_classes = [OAuth2Authentication]  # Enforce OAuth2 authentication
-    permission_classes = [IsAuthenticated]  # Ensure user is authenticated
+    authentication_classes = [JWTAuthentication]  # Enforce OAuth2 authentication
+    permission_classes = [IsAdminUser]  # Ensure user is IsAdminUser
 
 
 # View to handle Credit Requests
@@ -50,7 +64,7 @@ class CreditRequestCreateView(generics.CreateAPIView):
     queryset = CreditRequest.objects.all()
     serializer_class = CreditRequestSerializer
 
-    authentication_classes = [OAuth2Authentication]  # Enforce OAuth2 authentication
+    authentication_classes = [JWTAuthentication]  # Enforce OAuth2 authentication
     permission_classes = [IsAuthenticated]  # Ensure user is authenticated
 
     # Handle custom logic to approve the credit request
@@ -61,8 +75,8 @@ class CreditRequestCreateView(generics.CreateAPIView):
 
 # View to approve a Credit Request
 class CreditRequestApprovalView(APIView):
-    authentication_classes = [OAuth2Authentication]  # Enforce OAuth2 authentication
-    permission_classes = [IsAuthenticated]  # Ensure user is authenticated
+    authentication_classes = [JWTAuthentication]  # Enforce OAuth2 authentication
+    permission_classes = [IsAdminUser]  # Ensure user is IsAdminUser
 
     def post(self, request, pk):
         try:
@@ -79,22 +93,15 @@ class CreditRequestApprovalView(APIView):
                 credit_request.save()
 
                 # Update seller's credit
-                seller = credit_request.seller
-                seller.credit += credit_request.amount
-                seller.save()
-
-                # Log the credit update
-                CreditLog.objects.create(
-                    seller=seller,
-                    amount=credit_request.amount,
-                    balance_snapshot=seller.credit,
-                    description="Credit added via approval."
-                )
+                result = CreditTransactionHandler.add_credit(vendor_id=credit_request.seller.id,
+                                                             amount=credit_request.amount)
         except Exception as e:
-            return Response({"detail": f"Error in Create Credit Request Approval.{e}"},
-                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            result = {"success": False, "message": f"An error occurred: {e}"}
 
-        return Response({"detail": "Credit request approved successfully."}, status=status.HTTP_200_OK)
+        if result['success']:
+            return Response({"detail": "Credit request approved successfully."}, status=status.HTTP_200_OK)
+        else:
+            return Response({"detail": result['message']}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 # View to handle recharge transactions
@@ -102,7 +109,7 @@ class TransactionCreateView(generics.CreateAPIView):
     queryset = Transaction.objects.all()
     serializer_class = TransactionSerializer
 
-    authentication_classes = [OAuth2Authentication]  # Enforce OAuth2 authentication
+    authentication_classes = [JWTAuthentication]  # Enforce OAuth2 authentication
     permission_classes = [IsAuthenticated]  # Ensure user is authenticated
 
     # Override perform_create to deduct credit after successful transaction
@@ -118,12 +125,27 @@ class TransactionCreateView(generics.CreateAPIView):
 
 
 # View to list all credit logs for a specific seller
-class CreditLogListView(generics.ListAPIView):
+class CreditLogsListView(generics.ListAPIView):
     serializer_class = CreditLogSerializer
 
-    authentication_classes = [OAuth2Authentication]  # Enforce OAuth2 authentication
-    permission_classes = [IsAuthenticated]  # Ensure user is authenticated
+    authentication_classes = [JWTAuthentication]  # Enforce OAuth2 authentication
+    permission_classes = [IsAdminUser]  # Ensure user is authenticated
 
     def get_queryset(self):
         seller_id = self.kwargs['seller_id']
         return CreditLog.objects.filter(seller_id=seller_id)
+
+
+# View to list credit logs for a seller
+class CreditLogListView(generics.ListAPIView):
+    serializer_class = CreditLogSerializer
+
+    authentication_classes = [JWTAuthentication]  # Enforce OAuth2 authentication
+    permission_classes = [IsAuthenticated]  # Ensure user is authenticated
+
+    def get_queryset(self):
+        try:
+            seller = self.request.user.seller
+        except Seller.DoesNotExist:
+            raise Http404('The Seller associated with this user was not found.')
+        return CreditLog.objects.filter(seller=seller)

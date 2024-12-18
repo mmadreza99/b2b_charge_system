@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 
 from pathlib import Path
+from datetime import timedelta
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -27,12 +28,13 @@ DEBUG = True
 
 ALLOWED_HOSTS = []
 
-# REST Framework settings with OAuth2
 REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': (
-        'oauth2_provider.contrib.rest_framework.OAuth2Authentication',
-        'rest_framework.authentication.SessionAuthentication',
-    )
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ],
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
+    ],
 }
 
 OAUTH2_PROVIDER = {
@@ -48,9 +50,8 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'oauth2_provider',  # OAuth2 provider app
-    'rest_framework',  # DRF for API integration
-    'rest_framework.authtoken',  # Token-based authentication
+    'rest_framework',
+    'rest_framework_simplejwt',
     'charge_management',
 ]
 
@@ -149,3 +150,13 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=50),  # Access token validity
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),    # Refresh token validity
+    'ROTATE_REFRESH_TOKENS': True,                 # Rotates the refresh token on use
+    'BLACKLIST_AFTER_ROTATION': True,              # Blacklist old refresh tokens
+    'ALGORITHM': 'HS256',                          # Signing algorithm
+    'SIGNING_KEY': SECRET_KEY,              # Ensure this matches your server
+}
