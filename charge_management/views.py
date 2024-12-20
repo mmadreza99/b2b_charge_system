@@ -1,6 +1,5 @@
 from django.db import transaction
 from django.http import Http404
-from django.shortcuts import get_object_or_404
 from django.utils import timezone
 
 from rest_framework import generics, status
@@ -90,15 +89,16 @@ class CreditRequestApprovalView(APIView):
                 credit_request.is_approved = True
                 credit_request.approved_by = request.user
                 credit_request.approved_at = timezone.now()
-                credit_request.save()
 
                 # Update seller's credit
-                result = CreditTransactionHandler.add_credit(vendor_id=credit_request.seller.id,
+                result = CreditTransactionHandler.add_credit(seller_id=credit_request.seller.id,
                                                              amount=credit_request.amount)
+
         except Exception as e:
             result = {"success": False, "message": f"An error occurred: {e}"}
 
         if result['success']:
+            credit_request.save()
             return Response({"detail": "Credit request approved successfully."}, status=status.HTTP_200_OK)
         else:
             return Response({"detail": result['message']}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

@@ -1,4 +1,6 @@
-from django.db import models
+from django.utils import timezone
+
+from django.db import models, transaction
 from django.contrib.auth.models import User  # To associate admin users approving credits
 
 
@@ -30,9 +32,20 @@ class CreditRequest(models.Model):
     def __str__(self):
         return f"{self.seller.name} - {self.amount}"
 
-    def approve(self):
-        self.is_approved = True
-        self.save()
+    def approve(self, user):
+        from charge_management.handlers import CreditTransactionHandler
+
+        with transaction.atomic():
+            # Approve the request and update seller's credit
+            self.is_approved = True
+            self.approved_by = user
+            self.approved_at = timezone.now()
+
+            # Update seller's credit
+            result = CreditTransactionHandler.add_credit(seller_id=self.seller.id,
+                                                         amount=self.amount)
+            if result['success']:
+                self.save()
 
 
 # Model to log transactions for recharge operations

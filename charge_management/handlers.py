@@ -4,11 +4,11 @@ from .models import Seller, CreditLog
 
 class CreditTransactionHandler:
     @staticmethod
-    def add_credit(vendor_id, amount):
+    def add_credit(seller_id, amount):
         try:
             with transaction.atomic():
                 # Start a transaction and lock the seller row
-                seller = Seller.objects.select_for_update().get(id=vendor_id)
+                seller = Seller.objects.select_for_update().get(id=seller_id)
 
                 # Update seller's credit
                 seller.credit += amount

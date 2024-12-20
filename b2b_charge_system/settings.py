@@ -37,10 +37,6 @@ REST_FRAMEWORK = {
     ],
 }
 
-OAUTH2_PROVIDER = {
-    'ACCESS_TOKEN_EXPIRE_SECONDS': 3600,
-}
-
 # Application definition
 
 INSTALLED_APPS = [

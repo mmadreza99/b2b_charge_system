@@ -1,36 +1,57 @@
-from django.test import TestCase
-from .models import Seller, CreditLog
+from .models import Seller, CreditLog, Transaction
 from .handlers import CreditTransactionHandler
 from threading import Thread
+
+from django.contrib.auth.models import User
+from django.test import TestCase
 
 
 class CreditTransactionTestCase(TestCase):
     def test_credit_increase(self):
-        seller = Seller.objects.create(user_id=1, credit=500.00)
+        # Create a User instance for the foreign key
+        user = User.objects.create_user(username='testuser', password='testpass')
+
+        # Create a Seller instance with the user
+        seller = Seller.objects.create(user=user, credit=500.00)
+
+        # Create a Transaction
+        increase_amount = 10
+        Transaction.objects.create(seller=seller,
+                                   phone_number='09121234567',
+                                   amount=increase_amount)
+
+        # Create a CreditLog
         CreditLog.objects.create(
             seller=seller,
-            amount=-500.00,
+            amount=-increase_amount,
             balance_snapshot=seller.credit,
             description=f"test_credit_increase"
         )
+
+        # Refresh the Seller from the database to check updated credit
         seller.refresh_from_db()
-        self.assertEqual(seller.credit, 700.00)
+
+        # Assert the updated credit
+        self.assertEqual(seller.credit, 490)
 
 
 class DoubleSpendingTestCase(TestCase):
     def setUp(self):
-        # ایجاد یک فروشنده با اعتبار اولیه
-        self.seller = Seller.objects.create(user_id=1, credit=500.00)
+        # Create a User instance for the foreign key
+        user = User.objects.create_user(username='testuser', password='testpass')
+
+        # Create a seller with initial credentials
+        self.seller = Seller.objects.create(user=user, credit=500.00)
 
     def test_double_spending(self):
-        # تعریف دو تابع برای افزایش همزمان اعتبار
+        # Define two functions to increase validity simultaneously
         def add_credit1():
-            CreditTransactionHandler.add_credit(vendor_id=self.seller.id, amount=200.00)
+            print(CreditTransactionHandler.add_credit(seller_id=self.seller.id, amount=200))
 
         def add_credit2():
-            CreditTransactionHandler.add_credit(vendor_id=self.seller.id, amount=300.00)
+            print(CreditTransactionHandler.add_credit(seller_id=self.seller.id, amount=300))
 
-        # اجرای توابع به‌طور همزمان در دو Thread
+        # Execute the function simultaneously in two threads
         t1 = Thread(target=add_credit1)
         t2 = Thread(target=add_credit2)
 
@@ -39,6 +60,6 @@ class DoubleSpendingTestCase(TestCase):
         t1.join()
         t2.join()
 
-        # اعتبار فروشنده را بررسی می‌کنیم
+        # We check the seller's credit.
         self.seller.refresh_from_db()
         self.assertEqual(self.seller.credit, 1000.00)  # 500 + 200 + 300
