@@ -58,8 +58,15 @@ class DoubleSpendingTest(TestCase):
 
     def test_double_spending(self):
         # Simulate two threads trying to perform transactions at the same time
-        thread1 = Thread(target=self.make_transaction, args=(Decimal("90.00"),))
-        thread2 = Thread(target=self.make_transaction, args=(Decimal("90.00"),))
+        results = []
+
+        def run_transaction(amount):
+            result = self.make_transaction(amount)
+            if result:
+                results.append(result)
+
+        thread1 = Thread(target=run_transaction, args=(Decimal("90.00"),))
+        thread2 = Thread(target=run_transaction, args=(Decimal("90.00"),))
 
         # Start the threads
         thread1.start()
@@ -74,8 +81,11 @@ class DoubleSpendingTest(TestCase):
 
         # Validate the final credit and number of transactions
         total_transactions = self.seller.transactions.aggregate(total=models.Sum('amount'))['total'] or Decimal(0)
-        self.assertTrue(total_transactions <= Decimal("100.00"), "Double spending occurred")
-        self.assertTrue(self.seller.credit >= Decimal(0), "Seller credit is negative")
+        self.assertLessEqual(total_transactions, Decimal("100.00"), "Double spending occurred")
+        self.assertGreaterEqual(self.seller.credit, Decimal(0), "Seller credit is negative")
+
+        # Check results for debugging
+        print("Results from threads:", results)
 
 
 class SellerTransactionTest(TestCase):
