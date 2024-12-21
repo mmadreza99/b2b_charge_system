@@ -1,6 +1,9 @@
+from time import sleep
+
+from django.db.models import F
 from django.utils import timezone
 
-from django.db import models, transaction
+from django.db import models, transaction, DatabaseError
 from django.contrib.auth.models import User  # To associate admin users approving credits
 
 
@@ -61,12 +64,24 @@ class Transaction(models.Model):
 
     # Ensures credit deduction logic is handled correctly
     def save(self, *args, **kwargs):
-        if self.seller.credit < self.amount:
-            raise ValueError("Insufficient credit for this transaction.")
-        super().save(*args, **kwargs)
-        # Deduct the credit after transaction is saved
-        self.seller.credit -= self.amount
-        self.seller.save()
+        max_attempts = 2
+        attempt = 0
+        while attempt < max_attempts:
+            try:
+                with transaction.atomic():
+                    seller = Seller.objects.select_for_update().get(id=self.seller.id)  # Lock the seller row
+                    if seller.credit < self.amount:
+                        raise ValueError("Insufficient credit for this transaction.")
+                    super().save(*args, **kwargs)
+                    # Deduct credit
+                    seller.credit = F('credit') - self.amount
+                    seller.save()
+                break  # Exit the loop if the transaction is successful
+            except DatabaseError as e:
+                attempt += 1
+                if attempt >= max_attempts:
+                    raise e  # Re-raise the exception if max attempts are reached
+                sleep(1)  # Wait for a second before retrying
 
 
 # Model to log changes in seller's credit (credit history)
@@ -99,3 +114,7 @@ class PhoneNumber(models.Model):
     @staticmethod
     def is_valid_phone_number(phone_number):
         return PhoneNumber.objects.filter(phone_number=phone_number, is_active=True).exists()
+
+    def deactivate(self):
+        self.is_active = False
+        self.save()
